@@ -110,7 +110,7 @@ function createShareCanvas(persona: PersonaType, scores: Scores) {
 
   axisCopy.forEach((axis, index) => {
     const y = 1024 + index * 86;
-    const percents = axisPercent(scores[axis.key]);
+    const percents = axisPercent(scores[axis.key], axis.key);
     const tendency = percents.positive >= 50 ? axis.positive : axis.negative;
     const tendencyPercent = Math.max(percents.positive, percents.negative);
 

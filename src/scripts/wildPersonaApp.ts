@@ -1,6 +1,6 @@
 import { wildPersonaQuestions, type WildOption, type WildQuestion } from "../data/wildPersonaQuestions";
 import { personaTypes, type PersonaCode, type Scores, type ScoreKey } from "../data/wildPersonaTypes";
-import { addEffect, axisPercent, emptyScores, getPersona, getPersonaCode } from "../utils/scoring";
+import { addEffect, axisPercent, emptyScores, getPersona, getPersonaCode, getPersonaMatch } from "../utils/scoring";
 import { downloadShareImage, previewShareImage } from "../utils/share";
 import { shuffle } from "../utils/shuffle";
 import { readStoredResult, saveStoredResult, type StoredResult } from "../utils/storage";
@@ -220,7 +220,7 @@ function renderResult() {
   const persona = getPersona(state.resultScores);
   const barMarkup = axisRows
     .map((axis) => {
-      const percents = axisPercent(state.resultScores?.[axis.key] ?? 0);
+      const percents = axisPercent(state.resultScores?.[axis.key] ?? 0, axis.key);
       return `
         <div class="wild-bar-item">
           <div class="wild-bar-copy">
@@ -424,6 +424,9 @@ function finishQuiz() {
   state.resultScores = scores;
   state.resultCode = code;
   state.mode = "result";
+  if (import.meta.env.DEV) {
+    console.debug("UniTI persona match", getPersonaMatch(scores));
+  }
   render();
   void trackCompletion(getPersona(scores).name, result.answeredAt);
   scrollToTop();
