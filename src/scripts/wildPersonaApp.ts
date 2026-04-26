@@ -1,8 +1,8 @@
 import { wildPersonaQuestions, type WildOption, type WildQuestion } from "../data/wildPersonaQuestions";
 import { personaTypes, type PersonaCode, type Scores, type ScoreKey } from "../data/wildPersonaTypes";
 import { addEffect, axisPercent, emptyScores, getPersona, getPersonaCode } from "../utils/scoring";
+import { downloadShareImage, previewShareImage } from "../utils/share";
 import { shuffle } from "../utils/shuffle";
-import { downloadShareImage } from "../utils/share";
 import { readStoredResult, saveStoredResult, type StoredResult } from "../utils/storage";
 
 type PreparedQuestion = Omit<WildQuestion, "options"> & {
@@ -27,21 +27,17 @@ const axisRows: Array<{ key: ScoreKey; label: string; positive: string; negative
 const state: {
   mode: Mode;
   questions: PreparedQuestion[];
-  index: number;
-  answers: Answer[];
+  answers: Record<string, Answer>;
   resultScores: Scores | null;
   resultCode: PersonaCode | null;
   storedResult: StoredResult | null;
-  locked: boolean;
 } = {
   mode: "start",
   questions: [],
-  index: 0,
-  answers: [],
+  answers: {},
   resultScores: null,
   resultCode: null,
   storedResult: null,
-  locked: false,
 };
 
 const root = document.querySelector<HTMLDivElement>("#wild-persona-root");
@@ -55,6 +51,10 @@ function prepareQuestions(): PreparedQuestion[] {
 
 function calculateScores(answers: Answer[]): Scores {
   return answers.reduce((scores, answer) => addEffect(scores, answer.effect), emptyScores());
+}
+
+function answeredCount() {
+  return Object.keys(state.answers).length;
 }
 
 function escapeHtml(value: string) {
@@ -71,7 +71,7 @@ function render() {
   }
 
   if (state.mode === "quiz") {
-    renderQuestion();
+    renderQuiz();
     return;
   }
 
@@ -110,46 +110,86 @@ function renderStart() {
   root.querySelector('[data-action="last"]')?.addEventListener("click", showLastResult);
 }
 
-function renderQuestion() {
+function renderQuiz() {
   if (!root) {
     return;
   }
 
-  const question = state.questions[state.index];
-  const progress = ((state.index + 1) / state.questions.length) * 100;
+  const groups = chunkQuestions(state.questions, 6);
   root.innerHTML = `
-    <section class="wild-card wild-question" aria-labelledby="question-title">
-      <div class="wild-progress-row">
-        <span>${state.index + 1}/${state.questions.length}</span>
-        <div class="wild-progress" aria-label="答题进度">
-          <div style="width: ${progress}%"></div>
+    <section class="wild-quiz-flow" aria-labelledby="quiz-title">
+      <div class="wild-quiz-head">
+        <div>
+          <div class="wild-kicker">滚动答题</div>
+          <h1 id="quiz-title">选最像你的</h1>
+        </div>
+        <div class="wild-progress-stack">
+          <span data-progress-text>${answeredCount()}/${state.questions.length}</span>
+          <div class="wild-progress" aria-label="答题进度">
+            <div data-progress-bar style="width: ${(answeredCount() / state.questions.length) * 100}%"></div>
+          </div>
         </div>
       </div>
-      <h1 id="question-title">${escapeHtml(question.text)}</h1>
-      <div class="wild-options">
-        ${question.options
+      <div class="wild-question-groups">
+        ${groups
           .map(
-            (option) => `
-              <button class="wild-option" type="button" data-option="${option.id}">
-                ${escapeHtml(option.text)}
-              </button>
+            (group, groupIndex) => `
+              <div class="wild-card wild-question-group">
+                <div class="wild-group-title">第 ${groupIndex * 6 + 1}-${groupIndex * 6 + group.length} 题</div>
+                ${group.map((question) => renderQuestionBlock(question)).join("")}
+              </div>
             `,
           )
           .join("")}
+      </div>
+      <div class="wild-submit-bar">
+        <button class="wild-button wild-button-primary" type="button" data-action="submit">看结果</button>
       </div>
     </section>
   `;
 
   root.querySelectorAll<HTMLButtonElement>("[data-option]").forEach((button) => {
     button.addEventListener("click", () => {
-      const id = button.dataset.option;
-      const option = question.options.find((item) => item.id === id);
-      if (!option) {
+      const questionId = button.dataset.question;
+      const optionId = button.dataset.option;
+      const question = state.questions.find((item) => item.id === questionId);
+      const option = question?.options.find((item) => item.id === optionId);
+
+      if (!question || !option) {
         return;
       }
-      chooseOption(option, button);
+
+      chooseOption(question, option, button);
     });
   });
+
+  root.querySelector('[data-action="submit"]')?.addEventListener("click", submitQuiz);
+  updateQuizProgress();
+}
+
+function renderQuestionBlock(question: PreparedQuestion) {
+  const answer = state.answers[question.id];
+  return `
+    <article class="wild-question-block" data-question-block="${question.id}">
+      <h2>${escapeHtml(question.text)}</h2>
+      <div class="wild-options">
+        ${question.options
+          .map(
+            (option) => `
+              <button
+                class="wild-option${answer?.optionId === option.id ? " is-selected" : ""}"
+                type="button"
+                data-question="${question.id}"
+                data-option="${option.id}"
+              >
+                ${escapeHtml(option.text)}
+              </button>
+            `,
+          )
+          .join("")}
+      </div>
+    </article>
+  `;
 }
 
 function renderResult() {
@@ -174,56 +214,87 @@ function renderResult() {
     .join("");
 
   root.innerHTML = `
-    <section class="wild-result-grid" aria-labelledby="result-title">
-      <div class="wild-card wild-result-main">
+    <section class="wild-result-layout" aria-labelledby="result-title">
+      <div class="wild-card wild-result-primary">
         <div class="wild-kicker">你的类型</div>
-        <h1 id="result-title">${escapeHtml(persona.name)}</h1>
-        <div class="wild-english">${escapeHtml(persona.englishName)}</div>
+        <div class="wild-title-row">
+          <h1 id="result-title">${escapeHtml(persona.name)}</h1>
+          <span>${escapeHtml(persona.englishName)}</span>
+        </div>
         <p class="wild-line">${escapeHtml(persona.line)}</p>
         <p class="wild-desc">${escapeHtml(persona.description)}</p>
+        <div class="wild-statement-grid">
+          <div class="wild-statement">
+            <h2>你最像的状态</h2>
+            <p>${escapeHtml(persona.state)}</p>
+          </div>
+          <div class="wild-statement">
+            <h2>你大概会说的话</h2>
+            <p>${persona.quotes.map((quote) => escapeHtml(quote)).join("<br />")}</p>
+          </div>
+        </div>
+        <div class="wild-result-notes">
+          ${renderMiniList("高光", persona.highlights)}
+          ${renderMiniList("翻车点", persona.risks)}
+          ${renderMiniList("活法", persona.life)}
+        </div>
       </div>
-      <div class="wild-card wild-result-panel">
-        <h2>四维剖面</h2>
-        <div class="wild-bars">${barMarkup}</div>
-      </div>
-      ${renderListCard("高光", persona.highlights)}
-      ${renderListCard("翻车点", persona.risks)}
-      ${renderListCard("建议", persona.advice)}
-      <div class="wild-result-actions">
-        <button class="wild-button wild-button-primary" type="button" data-action="share">下载结果图</button>
-        <button class="wild-button wild-button-ghost" type="button" data-action="restart">重新测</button>
-      </div>
+      <aside class="wild-result-side">
+        <div class="wild-card wild-side-card">
+          <h2>四维剖面</h2>
+          <div class="wild-bars">${barMarkup}</div>
+        </div>
+        <div class="wild-card wild-side-card wild-action-card">
+          <button class="wild-button wild-button-primary" type="button" data-action="share">下载结果图</button>
+          <button class="wild-button wild-button-ghost" type="button" data-action="preview">预览分享图</button>
+          <button class="wild-button wild-button-ghost" type="button" data-action="restart">重新测</button>
+        </div>
+      </aside>
     </section>
   `;
 
-  root.querySelector('[data-action="share"]')?.addEventListener("click", () => {
+  root.querySelector('[data-action="share"]')?.addEventListener("click", async () => {
+    if (!state.resultScores) {
+      return;
+    }
+    const ok = await downloadShareImage(persona, state.resultScores);
+    if (!ok) {
+      previewShareImage(persona, state.resultScores);
+    }
+  });
+  root.querySelector('[data-action="preview"]')?.addEventListener("click", () => {
     if (state.resultScores) {
-      downloadShareImage(persona, state.resultScores);
+      previewShareImage(persona, state.resultScores);
     }
   });
   root.querySelector('[data-action="restart"]')?.addEventListener("click", startQuiz);
 }
 
-function renderListCard(title: string, items: string[]) {
+function renderMiniList(title: string, items: string[]) {
   return `
-    <div class="wild-card wild-list-card">
+    <div class="wild-mini-list">
       <h2>${title}</h2>
-      <ul>
-        ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-      </ul>
+      <ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
     </div>
   `;
+}
+
+function chunkQuestions(items: PreparedQuestion[], size: number) {
+  const groups: PreparedQuestion[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    groups.push(items.slice(i, i + size));
+  }
+  return groups;
 }
 
 function startQuiz() {
   state.mode = "quiz";
   state.questions = prepareQuestions();
-  state.index = 0;
-  state.answers = [];
+  state.answers = {};
   state.resultScores = null;
   state.resultCode = null;
-  state.locked = false;
   render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function showLastResult() {
@@ -236,42 +307,52 @@ function showLastResult() {
   render();
 }
 
-function chooseOption(option: WildOption, button: HTMLButtonElement) {
-  if (state.locked) {
+function chooseOption(question: PreparedQuestion, option: WildOption, button: HTMLButtonElement) {
+  state.answers[question.id] = {
+    questionId: question.id,
+    optionId: option.id,
+    effect: option.effect,
+  };
+
+  root?.querySelectorAll<HTMLButtonElement>(`[data-question="${question.id}"]`).forEach((item) => {
+    item.classList.toggle("is-selected", item === button);
+  });
+  root?.querySelector(`[data-question-block="${question.id}"]`)?.classList.remove("is-missing");
+  updateQuizProgress();
+}
+
+function updateQuizProgress() {
+  const count = answeredCount();
+  const total = state.questions.length;
+  const progress = total ? (count / total) * 100 : 0;
+  root?.querySelector("[data-progress-text]")?.replaceChildren(document.createTextNode(`${count}/${total}`));
+  const bar = root?.querySelector<HTMLElement>("[data-progress-bar]");
+  if (bar) {
+    bar.style.width = `${progress}%`;
+  }
+  const submit = root?.querySelector<HTMLButtonElement>('[data-action="submit"]');
+  if (submit) {
+    submit.textContent = count === total ? "看结果" : `还差 ${total - count} 题`;
+    submit.classList.toggle("is-ready", count === total);
+  }
+}
+
+function submitQuiz() {
+  if (answeredCount() < state.questions.length) {
+    const missing = state.questions.find((question) => !state.answers[question.id]);
+    const block = missing ? root?.querySelector<HTMLElement>(`[data-question-block="${missing.id}"]`) : null;
+    if (block) {
+      block.classList.add("is-missing");
+      block.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
     return;
   }
 
-  state.locked = true;
-  root?.querySelectorAll<HTMLButtonElement>(".wild-option").forEach((item) => {
-    item.disabled = true;
-  });
-  button.classList.add("is-selected");
-
-  const nextAnswers = [
-    ...state.answers,
-    {
-      questionId: state.questions[state.index].id,
-      optionId: option.id,
-      effect: option.effect,
-    },
-  ];
-
-  window.setTimeout(() => {
-    state.answers = nextAnswers;
-    state.locked = false;
-
-    if (state.index >= state.questions.length - 1) {
-      finishQuiz();
-      return;
-    }
-
-    state.index += 1;
-    render();
-  }, 180);
+  finishQuiz();
 }
 
 function finishQuiz() {
-  const scores = calculateScores(state.answers);
+  const scores = calculateScores(Object.values(state.answers));
   const code = getPersonaCode(scores);
   const result = {
     code,
@@ -285,6 +366,7 @@ function finishQuiz() {
   state.resultCode = code;
   state.mode = "result";
   render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 state.storedResult = readStoredResult();
