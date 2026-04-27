@@ -566,8 +566,9 @@ button {
 
 @media (max-width: 880px) {
   .wild-shell {
-    width: min(100vw - 20px, 720px);
-    padding-top: 18px;
+    width: min(100vw - 16px, 720px);
+    padding-top: 8px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
   .wild-start {
@@ -575,12 +576,44 @@ button {
   }
 
   .wild-quiz-head {
-    top: 8px;
-    grid-template-columns: 1fr;
+    top: 5px;
+    grid-template-columns: minmax(0, 1fr) minmax(96px, 32%);
+    gap: 8px;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 16px;
+  }
+
+  .wild-quiz-head .wild-kicker {
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+
+  .wild-quiz-head h1 {
+    margin-top: 4px;
+    font-size: clamp(19px, 5.4vw, 25px);
   }
 
   .wild-progress-stack {
-    text-align: left;
+    gap: 5px;
+    font-size: 11px;
+    text-align: right;
+  }
+
+  .wild-progress {
+    height: 5px;
+  }
+
+  .wild-page-card {
+    padding: 18px;
+  }
+
+  .wild-page-title {
+    margin-bottom: 16px;
+  }
+
+  .wild-page-questions {
+    gap: 22px;
   }
 
   .wild-options,
@@ -608,6 +641,20 @@ button {
   .wild-button {
     width: 100%;
   }
+
+  .wild-submit-bar {
+    bottom: max(6px, env(safe-area-inset-bottom));
+    grid-template-columns: minmax(96px, 0.34fr) minmax(140px, 0.66fr);
+    gap: 7px;
+    padding: 7px;
+    border-radius: 16px;
+  }
+
+  .wild-submit-bar .wild-button {
+    min-height: 38px;
+    padding: 0 10px;
+    border-radius: 12px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -622,19 +669,39 @@ button {
   .wild-page-card,
   .wild-result-primary,
   .wild-side-card {
-    padding: 20px;
+    padding: 14px;
+  }
+
+  .wild-page-title {
+    margin-bottom: 14px;
+    font-size: 12px;
+  }
+
+  .wild-page-questions {
+    gap: 20px;
   }
 
   .wild-question-block {
-    gap: 12px;
+    gap: 10px;
+  }
+
+  .wild-question-number {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  .wild-question-block h2 {
+    font-size: 16px;
+    line-height: 1.36;
   }
 
   .wild-option {
-    min-height: 52px;
-    padding: 13px 14px;
+    min-height: 44px;
+    padding: 10px 12px;
+    border-radius: 14px;
   }
 
   .wild-submit-bar {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(88px, 0.34fr) minmax(132px, 0.66fr);
   }
 }

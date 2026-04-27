@@ -3,6 +3,7 @@ import { personaTypes, type PersonaCode, type Scores, type ScoreKey } from "../d
 import { addEffect, axisPercent, emptyScores, getPersona, getPersonaCode, getPersonaMatch } from "../utils/scoring";
 import { downloadShareImage, previewShareImage } from "../utils/share";
 import { shuffle } from "../utils/shuffle";
+import { simulateRandomDistribution } from "../utils/scoringSimulation";
 import { readStoredResult, saveStoredResult, type StoredResult } from "../utils/storage";
 
 type PreparedQuestion = Omit<WildQuestion, "options"> & {
@@ -54,7 +55,7 @@ const state: {
 const root = document.querySelector<HTMLDivElement>("#wild-persona-root");
 
 function prepareQuestions(): PreparedQuestion[] {
-  return shuffle(wildPersonaQuestions).map((question) => ({
+  return wildPersonaQuestions.map((question) => ({
     ...question,
     options: shuffle(question.options),
   }));
@@ -111,7 +112,7 @@ function renderStart() {
   const lastPersona = state.storedResult ? personaTypes[state.storedResult.code] : null;
   root.innerHTML = `
     <section class="wild-card wild-start" aria-labelledby="wild-title">
-      <div class="wild-kicker">24 题，约 3 分钟</div>
+      <div class="wild-kicker"> UniTI </div>
       <h1 id="wild-title">大学生野生人格图鉴</h1>
       <p>测测你到底是什么校园活人</p>
       <div class="wild-actions">
@@ -437,6 +438,16 @@ function scrollToTop() {
 }
 
 state.storedResult = readStoredResult();
+if (import.meta.env.DEV) {
+  const devWindow = window as Window & {
+    __UNITI_SIMULATE__?: (iterations?: number) => ReturnType<typeof simulateRandomDistribution>;
+  };
+  devWindow.__UNITI_SIMULATE__ = (iterations = 5000) => {
+    const result = simulateRandomDistribution(iterations);
+    console.table(result);
+    return result;
+  };
+}
 render();
 void loadStats();
 
