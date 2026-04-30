@@ -87,7 +87,7 @@ npm run simulate -- 10000
 - `src/utils/scoring.ts`：评分与原型匹配
 - `src/utils/share.ts`：分享图生成
 - `src/scripts/wildPersonaApp.ts`：前端交互逻辑
-- `functions/api/track-complete.js`：完成统计上报
+- `functions/api/track-complete.js`：完成统计然后上报
 - `functions/api/stats.js`：统计读取
 
 ## 当前状态

@@ -1,9 +1,11 @@
+import { getPersonaIcon } from "../data/personaIcons";
 import { wildPersonaQuestions, type WildOption, type WildQuestion } from "../data/wildPersonaQuestions";
-import { personaTypes, type PersonaCode, type Scores, type ScoreKey } from "../data/wildPersonaTypes";
-import { addEffect, axisPercent, emptyScores, getPersona, getPersonaCode, getPersonaMatch } from "../utils/scoring";
+import { personaTypes, type PersonaCode, type Scores } from "../data/wildPersonaTypes";
+import { getAxisDisplay, axisRows } from "../utils/axisDisplay";
+import { addEffect, emptyScores, getPersona, getPersonaCode, getPersonaMatch } from "../utils/scoring";
+import { simulateRandomDistribution } from "../utils/scoringSimulation";
 import { downloadShareImage, previewShareImage } from "../utils/share";
 import { shuffle } from "../utils/shuffle";
-import { simulateRandomDistribution } from "../utils/scoringSimulation";
 import { readStoredResult, saveStoredResult, type StoredResult } from "../utils/storage";
 
 type PreparedQuestion = Omit<WildQuestion, "options"> & {
@@ -24,13 +26,7 @@ type StatsPayload = {
 };
 
 const pageSize = 6;
-
-const axisRows: Array<{ key: ScoreKey; label: string; positive: string; negative: string }> = [
-  { key: "rhythm", label: "节奏", positive: "提前铺垫", negative: "卡点启动" },
-  { key: "energy", label: "能量", positive: "稳定续航", negative: "波动爆发" },
-  { key: "social", label: "状态来源", positive: "自己消化", negative: "靠外界带动" },
-  { key: "posture", label: "生活姿态", positive: "收着活", negative: "放着活" },
-];
+const root = document.querySelector<HTMLDivElement>("#wild-persona-root");
 
 const state: {
   mode: Mode;
@@ -51,8 +47,6 @@ const state: {
   storedResult: null,
   stats: null,
 };
-
-const root = document.querySelector<HTMLDivElement>("#wild-persona-root");
 
 function prepareQuestions(): PreparedQuestion[] {
   return wildPersonaQuestions.map((question) => ({
@@ -90,6 +84,10 @@ function escapeHtml(value: string) {
     .replaceAll('"', "&quot;");
 }
 
+function isTouchDevice() {
+  return window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+}
+
 function render() {
   if (!root) return;
 
@@ -112,7 +110,7 @@ function renderStart() {
   const lastPersona = state.storedResult ? personaTypes[state.storedResult.code] : null;
   root.innerHTML = `
     <section class="wild-card wild-start" aria-labelledby="wild-title">
-      <div class="wild-kicker"> UniTI </div>
+      <div class="wild-kicker">UniTI</div>
       <h1 id="wild-title">大学生野生人格图鉴</h1>
       <p>测测你到底是什么校园活人</p>
       <div class="wild-actions">
@@ -219,16 +217,18 @@ function renderResult() {
   if (!root || !state.resultScores) return;
 
   const persona = getPersona(state.resultScores);
+  const icon = getPersonaIcon(persona);
+  const isTouch = isTouchDevice();
   const barMarkup = axisRows
     .map((axis) => {
-      const percents = axisPercent(state.resultScores?.[axis.key] ?? 0, axis.key);
+      const display = getAxisDisplay(state.resultScores!, axis.key);
       return `
         <div class="wild-bar-item">
           <div class="wild-bar-copy">
-            <strong>${axis.label}</strong>
-            <span>${axis.positive} ${percents.positive}% ｜ ${axis.negative} ${percents.negative}%</span>
+            <strong>${display.label}</strong>
+            <span>${display.positive} ${display.positivePercent}% ｜ ${display.negative} ${display.negativePercent}%</span>
           </div>
-          <div class="wild-bar-track"><div style="width: ${percents.positive}%"></div></div>
+          <div class="wild-bar-track"><div style="width: ${display.fillPercent}%"></div></div>
         </div>
       `;
     })
@@ -237,10 +237,17 @@ function renderResult() {
   root.innerHTML = `
     <section class="wild-result-layout" aria-labelledby="result-title">
       <div class="wild-card wild-result-primary">
-        <div class="wild-kicker">你的类型</div>
-        <div class="wild-title-row">
-          <h1 id="result-title">${escapeHtml(persona.name)}</h1>
-          <span>${escapeHtml(persona.englishName)}</span>
+        <div class="wild-result-hero">
+          <div>
+            <div class="wild-kicker">你的类型</div>
+            <div class="wild-title-row">
+              <h1 id="result-title">${escapeHtml(persona.name)}</h1>
+              <span>${escapeHtml(persona.englishName)}</span>
+            </div>
+          </div>
+          <div class="wild-persona-illustration">
+            <img class="wild-persona-icon" src="${icon.src}" alt="${escapeHtml(icon.name)}" loading="lazy" />
+          </div>
         </div>
         <p class="wild-line">${escapeHtml(persona.line)}</p>
         <p class="wild-desc">${escapeHtml(persona.description)}</p>
@@ -267,7 +274,7 @@ function renderResult() {
         </div>
         <div class="wild-card wild-side-card wild-action-card">
           ${renderStatsLine()}
-          <button class="wild-button wild-button-primary" type="button" data-action="share">下载结果图</button>
+          <button class="wild-button wild-button-primary" type="button" data-action="share">${isTouch ? "保存结果图" : "下载结果图"}</button>
           <button class="wild-button wild-button-ghost" type="button" data-action="preview">预览分享图</button>
           <button class="wild-button wild-button-ghost" type="button" data-action="restart">重新测</button>
         </div>
@@ -277,6 +284,10 @@ function renderResult() {
 
   root.querySelector('[data-action="share"]')?.addEventListener("click", async () => {
     if (!state.resultScores) return;
+    if (isTouchDevice()) {
+      previewShareImage(persona, state.resultScores);
+      return;
+    }
     const ok = await downloadShareImage(persona, state.resultScores);
     if (!ok) previewShareImage(persona, state.resultScores);
   });
@@ -437,20 +448,6 @@ function scrollToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-state.storedResult = readStoredResult();
-if (import.meta.env.DEV) {
-  const devWindow = window as Window & {
-    __UNITI_SIMULATE__?: (iterations?: number) => ReturnType<typeof simulateRandomDistribution>;
-  };
-  devWindow.__UNITI_SIMULATE__ = (iterations = 5000) => {
-    const result = simulateRandomDistribution(iterations);
-    console.table(result);
-    return result;
-  };
-}
-render();
-void loadStats();
-
 async function loadStats() {
   try {
     const response = await fetch("/api/stats", { headers: { accept: "application/json" } });
@@ -480,3 +477,17 @@ async function trackCompletion(persona: string, answeredAt: string) {
     // Do not block the result page if stats are unavailable.
   }
 }
+
+state.storedResult = readStoredResult();
+if (import.meta.env.DEV) {
+  const devWindow = window as Window & {
+    __UNITI_SIMULATE__?: (iterations?: number) => ReturnType<typeof simulateRandomDistribution>;
+  };
+  devWindow.__UNITI_SIMULATE__ = (iterations = 5000) => {
+    const result = simulateRandomDistribution(iterations);
+    console.table(result);
+    return result;
+  };
+}
+render();
+void loadStats();

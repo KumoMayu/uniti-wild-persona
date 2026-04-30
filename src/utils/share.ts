@@ -1,14 +1,8 @@
-import type { PersonaType, Scores, ScoreKey } from "../data/wildPersonaTypes";
-import { axisPercent } from "./scoring";
+import { getPersonaIcon } from "../data/personaIcons";
+import type { PersonaType, Scores } from "../data/wildPersonaTypes";
+import { axisRows, getAxisDisplay } from "./axisDisplay";
 
 const shareUrl = "https://uniti.pages.dev";
-
-const axisCopy: Array<{ key: ScoreKey; label: string; positive: string; negative: string }> = [
-  { key: "rhythm", label: "节奏", positive: "提前铺垫", negative: "卡点启动" },
-  { key: "energy", label: "能量", positive: "稳定续航", negative: "波动爆发" },
-  { key: "social", label: "状态", positive: "自己消化", negative: "靠外界带动" },
-  { key: "posture", label: "姿态", positive: "收着活", negative: "放着活" },
-];
 
 function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
   ctx.beginPath();
@@ -61,7 +55,90 @@ function drawQr(ctx: CanvasRenderingContext2D, matrix: boolean[][], x: number, y
   });
 }
 
-function createShareCanvas(persona: PersonaType, scores: Scores) {
+function isTouchDevice() {
+  return window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+}
+
+function isWechat() {
+  return /MicroMessenger/i.test(navigator.userAgent);
+}
+
+function getSaveHint() {
+  if (isWechat()) return "微信里请长按图片保存";
+  if (isTouchDevice()) return "手机上可长按图片保存到相册";
+  return "可右键保存图片，或点击下载";
+}
+
+async function loadImage(src: string) {
+  return new Promise<HTMLImageElement | null>((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = src;
+  });
+}
+
+function drawContainImage(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  ctx.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
+}
+
+function drawIllustrationCard(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement | null,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  ctx.fillStyle = "rgba(248, 253, 255, 0.96)";
+  roundedRect(ctx, x, y, width, height, 32);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(126, 178, 199, 0.22)";
+  ctx.lineWidth = 2;
+  roundedRect(ctx, x, y, width, height, 32);
+  ctx.stroke();
+  if (image) drawContainImage(ctx, image, x + 16, y + 16, width - 32, height - 32);
+}
+
+function drawAxisComparison(ctx: CanvasRenderingContext2D, scores: Scores, x: number, y: number, width: number) {
+  axisRows.forEach((axis, index) => {
+    const rowY = y + index * 82;
+    const display = getAxisDisplay(scores, axis.key);
+
+    ctx.fillStyle = "#30434d";
+    ctx.font = "700 26px system-ui, -apple-system, sans-serif";
+    ctx.fillText(display.label, x, rowY);
+
+    ctx.fillStyle = "#607986";
+    ctx.font = "590 22px system-ui, -apple-system, sans-serif";
+    ctx.fillText(`${display.positive} ${display.positivePercent}%`, x, rowY + 32);
+
+    ctx.textAlign = "right";
+    ctx.fillText(`${display.negative} ${display.negativePercent}%`, x + width, rowY + 32);
+    ctx.textAlign = "left";
+
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    roundedRect(ctx, x, rowY + 50, width, 18, 9);
+    ctx.fill();
+    ctx.fillStyle = "#8fcfe0";
+    roundedRect(ctx, x, rowY + 50, Math.max(18, (width * display.fillPercent) / 100), 18, 9);
+    ctx.fill();
+  });
+}
+
+async function createShareCanvas(persona: PersonaType, scores: Scores) {
+  const icon = getPersonaIcon(persona);
+  const iconImage = await loadImage(icon.src);
   const canvas = document.createElement("canvas");
   canvas.width = 1080;
   canvas.height = 1920;
@@ -76,7 +153,7 @@ function createShareCanvas(persona: PersonaType, scores: Scores) {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, 1080, 1920);
 
-  ctx.fillStyle = "rgba(255,255,255,0.86)";
+  ctx.fillStyle = "rgba(255,255,255,0.88)";
   roundedRect(ctx, 88, 108, 904, 1704, 56);
   ctx.fill();
   ctx.strokeStyle = "rgba(126, 178, 199, 0.28)";
@@ -90,47 +167,26 @@ function createShareCanvas(persona: PersonaType, scores: Scores) {
 
   ctx.fillStyle = "#253640";
   ctx.font = "850 88px system-ui, -apple-system, sans-serif";
-  ctx.fillText(persona.name, 150, 400);
+  ctx.fillText(persona.name, 150, 390);
 
   ctx.fillStyle = "#7895a4";
   ctx.font = "620 38px system-ui, -apple-system, sans-serif";
-  ctx.fillText(persona.englishName, 150, 466);
+  ctx.fillText(persona.englishName, 150, 456);
+
+  drawIllustrationCard(ctx, iconImage, 650, 286, 250, 250);
 
   ctx.fillStyle = "#344954";
   ctx.font = "760 42px system-ui, -apple-system, sans-serif";
   wrapText(ctx, persona.line, 150, 600, 780, 58);
 
-  ctx.fillStyle = "#dff3f8";
-  roundedRect(ctx, 150, 850, 780, 540, 42);
+  ctx.fillStyle = "#e6f5f9";
+  roundedRect(ctx, 150, 860, 780, 480, 42);
   ctx.fill();
 
   ctx.fillStyle = "#29414d";
   ctx.font = "760 32px system-ui, -apple-system, sans-serif";
-  ctx.fillText("四维短条", 204, 935);
-
-  axisCopy.forEach((axis, index) => {
-    const y = 1024 + index * 86;
-    const percents = axisPercent(scores[axis.key], axis.key);
-    const tendency = percents.positive >= 50 ? axis.positive : axis.negative;
-    const tendencyPercent = Math.max(percents.positive, percents.negative);
-
-    ctx.fillStyle = "#4b6571";
-    ctx.font = "650 27px system-ui, -apple-system, sans-serif";
-    ctx.fillText(`${axis.label} · ${tendency}`, 204, y);
-
-    ctx.fillStyle = "#66818f";
-    ctx.font = "620 24px system-ui, -apple-system, sans-serif";
-    ctx.textAlign = "right";
-    ctx.fillText(`${tendencyPercent}%`, 876, y);
-    ctx.textAlign = "left";
-
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    roundedRect(ctx, 204, y + 30, 672, 18, 9);
-    ctx.fill();
-    ctx.fillStyle = "#7dc9df";
-    roundedRect(ctx, 204, y + 30, Math.max(18, (672 * percents.positive) / 100), 18, 9);
-    ctx.fill();
-  });
+  ctx.fillText("四维剖面", 204, 940);
+  drawAxisComparison(ctx, scores, 204, 1000, 672);
 
   ctx.fillStyle = "#6f8d9d";
   ctx.font = "560 30px system-ui, -apple-system, sans-serif";
@@ -150,8 +206,7 @@ function createShareCanvas(persona: PersonaType, scores: Scores) {
 }
 
 export async function createShareImageUrl(persona: PersonaType, scores: Scores) {
-  await Promise.resolve();
-  const canvas = createShareCanvas(persona, scores);
+  const canvas = await createShareCanvas(persona, scores);
   return canvas?.toDataURL("image/png") ?? "";
 }
 
@@ -175,7 +230,10 @@ export async function downloadShareImage(persona: PersonaType, scores: Scores) {
 export async function previewShareImage(persona: PersonaType, scores: Scores) {
   const url = await createShareImageUrl(persona, scores);
   if (!url) return;
+  renderPreview(url, "分享图预览", getSaveHint(), `大学生野生人格图鉴-${persona.name}.png`);
+}
 
+function renderPreview(url: string, title: string, hint: string, filename: string) {
   document.querySelector(".wild-share-preview")?.remove();
 
   const overlay = document.createElement("div");
@@ -183,11 +241,12 @@ export async function previewShareImage(persona: PersonaType, scores: Scores) {
   overlay.innerHTML = `
     <div class="wild-share-preview-panel">
       <div class="wild-share-preview-head">
-        <span>分享图预览</span>
+        <span>${title}</span>
         <button type="button" aria-label="关闭">关闭</button>
       </div>
-      <img src="${url}" alt="分享图预览" />
-      <p>长按图片保存</p>
+      <img src="${url}" alt="${title}" />
+      <p>${hint}</p>
+      <a class="wild-preview-download" href="${url}" download="${filename}">下载图片</a>
     </div>
   `;
   document.body.appendChild(overlay);
